@@ -1,44 +1,76 @@
 import sys
-from io import BytesIO
 
+from PyQt6 import uic
+from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow
 import requests
-from PIL import Image, ImageQt
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel
+from requests.adapters import HTTPAdapter
+from urllib3 import Retry
 
-SCREEN_SIZE = [600, 450]
-
-
-class Example(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.getImage()
-        self.initUI()
-
-    def getImage(self):
-        map_request = "http://static-maps.yandex.ru/1.x/?ll=37.530887,55.703118&spn=0.002,0.002&l=map"
-        response = requests.get(map_request)
-
-        if not response:
-            print("Ошибка выполнения запроса:")
-            print(map_request)
-            print("Http статус:", response.status_code, "(", response.reason, ")")
-            sys.exit(1)
-
-        self.img = ImageQt.ImageQt(Image.open(BytesIO(response.content)))
-
-    def initUI(self):
-        self.setGeometry(100, 100, *SCREEN_SIZE)
-        self.setWindowTitle('Отображение карты')
-
-        self.image = QLabel(self)
-        self.image.move(0, 0)
-        self.image.resize(600, 450)
-        self.image.setPixmap(QPixmap.fromImage(self.img))
+API_KEY_STATIC = 'f2a0fe3a-b07e-4840-a1da-06f18b2ddf13'
 
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    ex = Example()
-    ex.show()
-    sys.exit(app.exec())
+class MainWindow(QMainWindow):
+    g_map: QPixmap
+    press_delta = 0.1
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        uic.loadUi('main.ui', self)
+
+        self.map_zoom = 8
+        self.map_ll = [39, 59]
+        self.map_key = ''
+
+        self.refresh_map()
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key.Key_PageUp:
+            if self.map_zoom < 17:
+                self.map_zoom += 1
+        elif key == Qt.Key.Key_PageDown:
+            if self.map_zoom > 0:
+                self.map_zoom -= 1
+        elif key == Qt.Key.Key_Right:
+            self.map_ll[0] += 8 / (1 + self.map_zoom ** 2)
+            if self.map_ll[0] > 180:
+                self.map_ll[0] = self.map_ll[0] - 360
+        elif key == Qt.Key.Key_Left:
+            self.map_ll[0] -= 8 / (1 + self.map_zoom ** 2)
+            if self.map_ll[0] < -180:
+                self.map_ll[0] = self.map_ll[0] + 360
+        elif key == Qt.Key.Key_Up:
+            if self.map_ll[0] + 4 / (1 + self.map_zoom ** 2) < 90:
+                self.map_ll[1] += 4 / (1 + self.map_zoom ** 2)
+        elif key == Qt.Key.Key_Down:
+            if self.map_ll[0] - 4 / (1 + self.map_zoom ** 2) > -90:
+                self.map_ll[1] -= 4 / (1 + self.map_zoom ** 2)
+        else:
+            return
+
+        self.refresh_map()
+
+    def refresh_map(self):
+        map_params = {
+            "ll": ','.join(map(str, self.map_ll)),
+            'z': self.map_zoom,
+            'apikey': API_KEY_STATIC,
+        }
+        session = requests.Session()
+        retry = Retry(total=10, connect=5, backoff_factor=0.5)
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        response = session.get('https://static-maps.yandex.ru/v1',
+                               params=map_params)
+        img = QImage.fromData(response.content)
+        pixmap = QPixmap.fromImage(img)
+        self.g_map.setPixmap(pixmap)
+
+
+app = QApplication(sys.argv)
+main_window = MainWindow()
+main_window.show()
+sys.exit(app.exec())
