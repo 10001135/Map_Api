@@ -8,7 +8,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
-API_KEY_STATIC = 'f2a0fe3a-b07e-4840-a1da-06f18b2ddf13'
+API_KEY_STATIC = 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
 
 
 class MainWindow(QMainWindow):
